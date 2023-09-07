@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>simpleMap</title>
+		<script	src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+		<script src="https://apis.openapi.sk.com/tmap/jsv2?version=1&appKey=2dGQfai3cs3zCZ4EdAkbX62hAsNrCO8N50yYPfWL"></script>
+		<script type="text/javascript">
+			var map;
+			var markerInfo;
+			//출발지,도착지 마커
+			var marker_s, marker_e, marker_p;
+			//경로그림정보
+			var drawInfoArr = [];
+			var drawInfoArr2 = [];
+		
+			var chktraffic = [];
+			var resultdrawArr = [];
+			var resultMarkerArr = [];
+            var user_x = {{ user_lat }}; //37.564991
+            var user_y = {{ user_lng }}; //126.983937
+            var end_x = {{ end_lat }};
+            var end_y = {{ end_lng }};
+			var mid_x = (user_x + end_x) / 2;
+			var mid_y = (user_y + end_y) / 2;
+			function initTmap() {
+				// 1. 지도 띄우기
+				map = new Tmapv2.Map("map_div", {
+					center : new Tmapv2.LatLng(mid_x, mid_y),
+					width : "100%",
+					height : "1500px",
+					zoom : 16,
+					zoomControl : true,
+					scrollwheel : true,
+				});
+		
+				// 2. 시작, 도착 심볼찍기
+				// 시작
+				marker_s = new Tmapv2.Marker(
+						{
+							position : new Tmapv2.LatLng(user_x,
+                            user_y),
+							icon : "http://tmapapi.sktelecom.com/upload/tmap/marker/pin_r_m_s.png",
+							iconSize : new Tmapv2.Size(24, 38),
+							map : map
+						});
+
+				
+				//도착
+				marker_e = new Tmapv2.Marker(
+						{
+							position : new Tmapv2.LatLng(end_x,
+                            end_y),
+							icon : "http://tmapapi.sktelecom.com/upload/tmap/marker/pin_r_m_e.png",
+							iconSize : new Tmapv2.Size(24, 38),
+							map : map
+						});
+				// 3. 경로탐색 API 사용요청
+				// $("#btn_select")
+				// 		.click(
+                //             function(){
+								// 3. 경로탐색 API 사용요청
+		    var headers = {}; 
+			headers["appKey"]="2dGQfai3cs3zCZ4EdAkbX62hAsNrCO8N50yYPfWL";
+                        
+		$.ajax({
+				method : "POST",
+				headers : headers,
+				url : "https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1&format=json&callback=result",
+				async : false,
+				data : {
+					"startX" : "" + user_y + "",
+					"startY" : "" + user_x + "",
+					"endX" : "" + end_y + "",
+					"endY" : "" + end_x + "",
+					"midX" : "" + mid_y + "",
+					"midY" : "" + mid_x + "",
+					"reqCoordType" : "WGS84GEO",
+					"resCoordType" : "EPSG3857",
+					"startName" : "출발지",
+					"endName" : "도착지"
+				},
+				success : function(response) {
+					
+					var resultData = response.features;
+
+					//결과 출력
+					var tDistance = "총 거리 : "
+							+ ((resultData[0].properties.totalDistance) / 1000)
+									.toFixed(1) + "km,";
+					var tTime = " 총 시간 : "
+							+ ((resultData[0].properties.totalTime) / 60)
+									.toFixed(0) + "분";
+
+					$("#result").text(tDistance + tTime);
+
+
+					//기존 그려진 라인 & 마커가 있다면 초기화
+					if (resultdrawArr.length > 0) {
+						for ( var i in resultdrawArr) {
+							resultdrawArr[i]
+									.setMap(null);
+						}
+						resultdrawArr = [];
+					}
+					
+					drawInfoArr = [];
+
+					for ( var i in resultData) { //for문 [S]
+						var geometry = resultData[i].geometry;
+						var properties = resultData[i].properties;
+						var polyline_;
+
+
+						if (geometry.type == "LineString") {
+							for ( var j in geometry.coordinates) {
+								// 경로들의 결과값(구간)들을 포인트 객체로 변환 
+								var latlng = new Tmapv2.Point(
+										geometry.coordinates[j][0],
+										geometry.coordinates[j][1]);
+								// 포인트 객체를 받아 좌표값으로 변환
+								var convertPoint = new Tmapv2.Projection.convertEPSG3857ToWGS84GEO(
+										latlng);
+								// 포인트객체의 정보로 좌표값 변환 객체로 저장
+								var convertChange = new Tmapv2.LatLng(
+										convertPoint._lat,
+										convertPoint._lng);
+								// 배열에 담기
+								drawInfoArr.push(convertChange);
+							}
+						} else {
+							var markerImg = "";
+							var pType = "";
+							var size;
+
+							if (properties.pointType == "S") { //출발지 마커
+								markerImg = "/upload/tmap/marker/pin_r_m_s.png";
+								pType = "S";
+								size = new Tmapv2.Size(24, 38);
+							} else if (properties.pointType == "E") { //도착지 마커
+								markerImg = "/upload/tmap/marker/pin_r_m_e.png";
+								pType = "E";
+								size = new Tmapv2.Size(24, 38);
+							} else { //각 포인트 마커
+								markerImg = "http://topopen.tmap.co.kr/imgs/point.png";
+								pType = "P";
+								size = new Tmapv2.Size(8, 8);
+							}
+
+							// 경로들의 결과값들을 포인트 객체로 변환 
+							var latlon = new Tmapv2.Point(
+									geometry.coordinates[0],
+									geometry.coordinates[1]);
+
+							// 포인트 객체를 받아 좌표값으로 다시 변환
+							var convertPoint = new Tmapv2.Projection.convertEPSG3857ToWGS84GEO(
+									latlon);
+
+							var routeInfoObj = {
+								markerImage : markerImg,
+								lng : convertPoint._lng,
+								lat : convertPoint._lat,
+								pointType : pType
+							};
+							
+							// Marker 추가
+							marker_p = new Tmapv2.Marker(
+									{
+										position : new Tmapv2.LatLng(
+												routeInfoObj.lat,
+												routeInfoObj.lng),
+										icon : routeInfoObj.markerImage,
+										iconSize : size,
+										map : map
+									});
+									
+						}
+					}//for문 [E]
+					drawLine(drawInfoArr);
+				},
+				error : function(request, status, error) {
+					console.log("code:" + request.status + "\n"
+							+ "message:" + request.responseText + "\n"
+							+ "error:" + error);
+				}
+			});
+        }
+	
+
+	function addComma(num) {
+		var regexp = /\B(?=(\d{3})+(?!\d))/g;
+		return num.toString().replace(regexp, ',');
+	}
+	
+	function drawLine(arrPoint) {
+		var polyline_;
+
+		polyline_ = new Tmapv2.Polyline({
+			path : arrPoint,
+			strokeColor : "#DD0000",
+			strokeWeight : 6,
+			map : map
+		});
+		resultdrawArr.push(polyline_);
+	}
+
+	
+		</script>
+        <!-- head 내용 -->
+    </script>
+</head>
+<style>
+	body, html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+    }
+
+    #result {
+		border: 1px solid #000;
+		padding: 10px;
+		width: 900px; /* 원하는 너비로 조정하세요 */
+		height: 50px; /* 원하는 높이로 조정하세요 */
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: bold;
+		font-size: 28px;
+	}
+
+
+
+    form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between; /* 아래 여백 추가 */
+        border: 1px solid #ccc;
+        padding: 20px;
+        background-color: #f5f5f5;
+        min-height: 10vh; /* 뷰포트 높이만큼 최소 높이 설정 */
+    }
+	#out {
+            
+		padding: 10px;
+		width: 300px; /* 원하는 너비로 조정하세요 */
+		height: 35px; /* 원하는 높이로 조정하세요 */
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: bold;
+		background-color:rgba(30, 144, 255, 0.2); 
+		border-radius: 15px;
+		font-size: 28px
+	}
+    #infoBox {
+        max-height: calc(100vh - 70px); /* 뷰포트 높이에서 상단 요소 높이를 빼서 최대 높이 설정 */
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 80%;
+        background-color: white;
+        text-align: center;
+		border-radius: 15px;
+		margin-top: -10px; /* 음수 값으로 설정하여 겹치도록 만듦 */
+    }
+	#infoBox p1 {
+        font-weight: bold; /* 해당 <p> 요소에 스타일 추가 */
+    }
+    #infoBox img {
+        max-width: 100%;
+        height: auto;
+        margin-bottom: 10px;
+        display: block;
+        margin: 0 auto;
+    }
+</style>
+<body onload="initTmap();">
+		<div id="map_wrap" class="map_wrap3">
+			<div id="map_div"></div>
+		</div>
+		<div class="map_act_btn_wrap clear_box"></div>
+</body>
+<form>
+		<p id="result"></p>
+		<p id="out">야외 행동 요령</p>
+		<div id="infoBox">
+			<p1>건물이나 담장으로부터 떨어져 이동합니다.</p1>
+			<p>･ 건물 밖으로 나오면 담장, 유리창 등이 파손되어 다칠 수 있으니, 건물과 담장에서 최대한 멀리 떨어져 가방이나 손으로 머리를 보호하면서 대피합니다.</p>
+			<img src="https://dbscthumb-phinf.pstatic.net/3065_000_1/20230719120653571_AKHRQ28HR.jpg/nema_0012_i6.jpg?type=w530_fst&wm=N">
+			<p1>낙하물이 없는 넓은 공간으로 대피합니다.</p1>
+			<p>･ 떨어지는 물건에 주의하며 신속하게 운동장이나 공원 등 넓은 공간으로 대피합니다.</p>
+			<p>･ 이동할 때에는 차량을 이용하지 않고 걸어서 대피합니다.</p>
+			<img src="https://dbscthumb-phinf.pstatic.net/3065_000_1/20170223112620260_DXDK6QSVP.png/nema_0012_i7.png?type=w530_fst&wm=N">
+			<p1>올바른 정보에 따라 행동합니다.</p1>
+			<p>･ 대피 장소에서는 안내에 따라 질서를 지킵니다.</p>
+			<p>･ 지진 발생 직후에는 근거 없는 소문이나 유언비어가 유포될 수 있으니, 라디오나 공공기관의 안내 방송 등이 제공하는 정보에 따라 행동합니다.</p>
+			<img src="https://dbscthumb-phinf.pstatic.net/3065_000_1/20170223112620264_08BNNWOZ2.png/nema_0012_i8.png?type=w530_fst&wm=N">
+		</div>
+</form>
+		<br />
+
+</html>
